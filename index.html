@@ -75,7 +75,7 @@ function piano(f,t,d,v){
   lp.type='lowpass';lp.frequency.setValueAtTime(Math.min(7000,f*6),t);lp.frequency.exponentialRampToValueAtTime(Math.max(350,f*1.3),t+d+1);
   [[1,1],[2,.28],[3,.08],[4,.03]].forEach(([k,a],i)=>{const o=ctx.createOscillator();o.type='sine';
     o.frequency.value=f*k*(1+0.0007*i);o.detune.value=(Math.random()-.5)*3;const og=ctx.createGain();og.gain.value=a;
-    o.connect(og);og.connect(lp);o.start(t);o.stop(t+d+3.2)});
+    o.connect(og);og.connect(lp);o.start(t);o.stop(t+d+1.5)});
   g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v,t+.008);
   g.gain.exponentialRampToValueAtTime(v*.4,t+.6);g.gain.exponentialRampToValueAtTime(.0001,t+d+3);
   lp.connect(g);g.connect(dry);g.connect(wet);
@@ -85,7 +85,7 @@ function impulse(sec){const r=ctx.sampleRate,b=ctx.createBuffer(2,r*sec,r);
 function playPhrase(t,s){
   const sec=FORM[Math.floor(s/4)%FORM.length],f=FR[s%4],hum=()=>(Math.random()-.5)*.015;
   for(let i=0;i<16;i++){const low=i%2===0;const n=low?f.l[Math.floor(i/4)]:f.p;
-    piano(N(n),t+i*E8+hum(),E8*1.6,(low?.06:.038)*sec.v*(i%4===0?1.15:1))}
+    piano(N(n),t+i*E8+hum(),E8*0.9,(low?.06:.038)*sec.v*(i%4===0?1.15:1))}
   if(sec.bass){piano(N(f.b),t,E8*14,.09*sec.v);if(sec.bass>1)piano(N(f.b-12),t,E8*14,.07)}
   if(sec.mel)f.m.forEach(([b,n,d])=>piano(N(n),t+b*E8+hum(),d*E8,.075*sec.v));
 }
@@ -95,7 +95,7 @@ function startMusic(){
   master=ctx.createGain();master.gain.value=0;master.gain.linearRampToValueAtTime(1,ctx.currentTime+1.5);
   const comp=ctx.createDynamicsCompressor();comp.threshold.value=-18;comp.ratio.value=3;
   dry=ctx.createGain();dry.gain.value=.6;wet=ctx.createConvolver();wet.buffer=impulse(4);
-  const wg=ctx.createGain();wg.gain.value=.75;
+  const wg=ctx.createGain();wg.gain.value=.4;
   dry.connect(master);wet.connect(wg);wg.connect(master);master.connect(comp);comp.connect(ctx.destination);
   nextT=ctx.currentTime+.3;tick();sched=setInterval(tick,300);playing=true;$('mute').style.display='block';
 }
