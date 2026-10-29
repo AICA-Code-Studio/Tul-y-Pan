@@ -59,57 +59,43 @@
 const $=id=>document.getElementById(id);
 let ctx,master,dry,wet,playing=false,sched,nextT,step=0;
 const N=n=>440*Math.pow(2,(n-69)/12);
-// Pieza original "Tul y pan": La menor, 64 bpm, ostinato minimalista + órgano suave
-const BEAT=60/64;
-const CH=[ // bajo, arpegio (5 notas), pad
-  {b:33,a:[45,52,57,60,64],p:[57,60,64]},   // Am
-  {b:29,a:[41,48,53,57,60],p:[57,60,65]},   // F
-  {b:36,a:[48,55,60,64,67],p:[55,60,64]},   // C
-  {b:28,a:[40,47,52,55,59],p:[55,59,64]},   // Em
+// Línea base: La Mi La Mi Si Mi Si Mi Do Mi Do Mi Re Mi... (corcheas, nota pedal arriba)
+const E8=0.36; // duración de cada corchea
+const FR=[ // cada frase: nota pedal, 4 notas que se mueven (2 corcheas c/u = 4 corcheas), bajo, melodía [inicio, nota, largo] en corcheas
+  {p:64,l:[57,59,60,62],b:45,m:[[0,76,8],[8,77,4],[12,76,4]]},  // La Mi Si Mi Do Mi Re Mi  (Am)
+  {p:64,l:[60,59,57,56],b:40,m:[[0,76,8],[8,74,4],[12,71,4]]},  // Do Si La Sol#  (E)
+  {p:65,l:[57,60,62,60],b:38,m:[[0,77,8],[8,76,4],[12,74,4]]},  // sobre Fa  (Dm)
+  {p:64,l:[60,59,57,59],b:41,m:[[0,72,6],[6,71,2],[8,69,8]]},   // vuelve  (F → Am)
 ];
-const PAT=[0,1,2,3,4,3,2,1];
-const MEL=[ // [chord, beat, nota, duración]
-  [[0,0,76,3],[0,3,74,1],[0,4,72,4],[1,0,69,3],[1,3,72,1],[1,4,77,4],[2,0,76,2],[2,2,79,2],[2,4,76,4],[3,0,74,3],[3,3,71,1],[3,4,76,4]],
-  [[0,0,81,4],[0,4,79,2],[0,6,76,2],[1,0,77,4],[1,4,76,2],[1,6,72,2],[2,0,79,3],[2,3,76,1],[2,4,72,4],[3,0,71,6],[3,6,74,2]]
-];
-// forma: 0 solo piano, 1 +melodía, 2 +órgano y melodía alta, 3 se apaga
-const FORM=[{m:-1,pad:0,v:.7},{m:0,pad:.5,v:.85},{m:1,pad:1,v:1},{m:0,pad:.6,v:.75},{m:-1,pad:.3,v:.6}];
+// forma por vueltas: 0 solo la línea, 1 + bajo, 2 + melodía, 3 + melodía y bajo en octavas, 4 se apaga
+const FORM=[{bass:0,mel:0,v:.75},{bass:1,mel:0,v:.85},{bass:1,mel:1,v:.95},{bass:2,mel:1,v:1},{bass:1,mel:0,v:.6}];
 
 function piano(f,t,d,v){
   const g=ctx.createGain(),lp=ctx.createBiquadFilter();
-  lp.type='lowpass';lp.frequency.setValueAtTime(Math.min(9000,f*7),t);lp.frequency.exponentialRampToValueAtTime(Math.max(400,f*1.5),t+d+1);
-  [[1,1],[2,.35],[3,.12],[4,.05]].forEach(([h,a],i)=>{const o=ctx.createOscillator();o.type='sine';
-    o.frequency.value=f*h*(1+(i?0.0008*i:0));o.detune.value=(Math.random()-.5)*4;const og=ctx.createGain();og.gain.value=a;
-    o.connect(og);og.connect(lp);o.start(t);o.stop(t+d+3)});
-  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v,t+.006);
-  g.gain.exponentialRampToValueAtTime(v*.35,t+.5);g.gain.exponentialRampToValueAtTime(.0001,t+d+2.6);
+  lp.type='lowpass';lp.frequency.setValueAtTime(Math.min(7000,f*6),t);lp.frequency.exponentialRampToValueAtTime(Math.max(350,f*1.3),t+d+1);
+  [[1,1],[2,.28],[3,.08],[4,.03]].forEach(([k,a],i)=>{const o=ctx.createOscillator();o.type='sine';
+    o.frequency.value=f*k*(1+0.0007*i);o.detune.value=(Math.random()-.5)*3;const og=ctx.createGain();og.gain.value=a;
+    o.connect(og);og.connect(lp);o.start(t);o.stop(t+d+3.2)});
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v,t+.008);
+  g.gain.exponentialRampToValueAtTime(v*.4,t+.6);g.gain.exponentialRampToValueAtTime(.0001,t+d+3);
   lp.connect(g);g.connect(dry);g.connect(wet);
 }
-function pad(notes,t,d,v){
-  if(v<=0)return;const g=ctx.createGain(),lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=900;lp.Q.value=.3;
-  notes.forEach(n=>[-5,5].forEach(dt=>{const o=ctx.createOscillator();o.type='sawtooth';o.frequency.value=N(n);o.detune.value=dt;
-    o.connect(lp);o.start(t);o.stop(t+d+3)}));
-  const o=ctx.createOscillator();o.type='sine';o.frequency.value=N(notes[0]-24);o.connect(lp);o.start(t);o.stop(t+d+3);
-  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.012*v,t+2.2);g.gain.setValueAtTime(.012*v,t+d);g.gain.linearRampToValueAtTime(0,t+d+2.8);
-  lp.connect(g);g.connect(wet);g.connect(dry);
-}
 function impulse(sec){const r=ctx.sampleRate,b=ctx.createBuffer(2,r*sec,r);
-  for(let c=0;c<2;c++){const d=b.getChannelData(c);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,3.2)}return b}
-// un "paso" = un acorde (8 corcheas = 2 compases de 4/4 a corcheas: 8 beats)
-function playChord(t,s){
-  const sec=FORM[Math.floor(s/4)%FORM.length],ci=s%4,c=CH[ci],hum=()=>(Math.random()-.5)*.012;
-  piano(N(c.b+12),t,BEAT*7,.10*sec.v); if(sec.pad>.8)piano(N(c.b),t,BEAT*7,.07);
-  for(let i=0;i<16;i++){const n=c.a[PAT[i%8]];piano(N(n),t+i*BEAT/2+hum(),BEAT*.9,(.045+(i%4==0?.015:0))*sec.v)}
-  pad(c.p,t,BEAT*8,sec.pad);
-  if(sec.m>=0)MEL[sec.m].filter(x=>x[0]===ci).forEach(([,b,n,d])=>piano(N(n),t+b*BEAT+hum(),d*BEAT,.085*sec.v));
+  for(let c=0;c<2;c++){const d=b.getChannelData(c);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,3)}return b}
+function playPhrase(t,s){
+  const sec=FORM[Math.floor(s/4)%FORM.length],f=FR[s%4],hum=()=>(Math.random()-.5)*.015;
+  for(let i=0;i<16;i++){const low=i%2===0;const n=low?f.l[Math.floor(i/4)]:f.p;
+    piano(N(n),t+i*E8+hum(),E8*1.6,(low?.06:.038)*sec.v*(i%4===0?1.15:1))}
+  if(sec.bass){piano(N(f.b),t,E8*14,.09*sec.v);if(sec.bass>1)piano(N(f.b-12),t,E8*14,.07)}
+  if(sec.mel)f.m.forEach(([b,n,d])=>piano(N(n),t+b*E8+hum(),d*E8,.075*sec.v));
 }
-function tick(){while(nextT<ctx.currentTime+1.5){playChord(nextT,step++);nextT+=BEAT*8}}
+function tick(){while(nextT<ctx.currentTime+1.5){playPhrase(nextT,step++);nextT+=E8*16}}
 function startMusic(){
   ctx=new (window.AudioContext||window.webkitAudioContext)();
-  master=ctx.createGain();master.gain.value=0;master.gain.linearRampToValueAtTime(1,ctx.currentTime+3);
+  master=ctx.createGain();master.gain.value=0;master.gain.linearRampToValueAtTime(1,ctx.currentTime+1.5);
   const comp=ctx.createDynamicsCompressor();comp.threshold.value=-18;comp.ratio.value=3;
-  dry=ctx.createGain();dry.gain.value=.55;wet=ctx.createConvolver();wet.buffer=impulse(4.5);
-  const wg=ctx.createGain();wg.gain.value=.9;
+  dry=ctx.createGain();dry.gain.value=.6;wet=ctx.createConvolver();wet.buffer=impulse(4);
+  const wg=ctx.createGain();wg.gain.value=.75;
   dry.connect(master);wet.connect(wg);wg.connect(master);master.connect(comp);comp.connect(ctx.destination);
   nextT=ctx.currentTime+.3;tick();sched=setInterval(tick,300);playing=true;$('mute').style.display='block';
 }
