@@ -26,10 +26,10 @@
   button.ghost{background:#ffffff55;color:#fff;backdrop-filter:blur(6px)}
   .card{background:#fff;border-radius:22px;padding:14px;box-shadow:0 18px 40px #0003;width:min(300px,86vw);
     animation:pop .9s cubic-bezier(.2,1.6,.4,1) both}
-  .card img{width:100%;border-radius:12px;display:block}
+  .card img{width:100%;height:auto;image-rendering:auto;border-radius:12px;display:block}
   @keyframes pop{from{transform:scale(.4) rotate(-8deg);opacity:0}}
-  .leyenda{font-family:Fraunces,serif;font-style:italic;font-size:1.15rem;color:#fff;max-width:340px;
-    text-shadow:0 2px 10px #0004;line-height:1.4}
+  .flecha{opacity:.9;filter:drop-shadow(0 2px 6px #0003);animation:bob 2.4s ease-in-out infinite}
+  @keyframes bob{50%{transform:translateY(7px)}}
   a.go{display:inline-block;text-decoration:none;font-weight:700;background:var(--ink);color:#fff;
     padding:14px 26px;border-radius:999px;box-shadow:0 6px 0 #0003}
   .petal{position:fixed;top:-30px;font-size:22px;pointer-events:none;animation:fall linear forwards}
@@ -50,47 +50,68 @@
 </section>
 
 <section class="screen hidden" id="s2">
-  <div class="card"><img src="codigo.jpg" alt="Código de Spotify de la playlist Tul y pan"></div>
-  <p class="leyenda">Una playlist para regar con cariño y piano.<br>Escaneala, ponela fuerte y dejá que florezca.</p>
+  <div class="card"><img src="codigo.png" alt="Código de Spotify de la playlist Tul y pan"></div>
+  <svg class="flecha" width="28" height="56" viewBox="0 0 28 56" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2 C 10 16, 18 30, 14 50"/><path d="M8 43 L14 51 L20 43"/></svg>
   <a class="go" href="https://open.spotify.com/playlist/7C7AvcWCt4kJRd6ic4k9IL?si=dFu3d1_tSJmsz8OEeFCHzg&utm_source=copy-link" target="_blank" rel="noopener">Abrir en Spotify</a>
 </section>
 
 <script>
 const $=id=>document.getElementById(id);
-let ctx,master,playing=false,timer;
-
-// Melodía original: vals lento en Fa mayor (3/4)
+let ctx,master,dry,wet,playing=false,sched,nextT,step=0;
 const N=n=>440*Math.pow(2,(n-69)/12);
-const prog=[[53,60,65,69],[50,57,62,65],[46,53,58,62],[48,55,60,64]]; // F Dm Bb C
-const mel=[[77,2],[76,1],[74,3],[72,2],[74,1],[77,3],[79,2],[77,1],[74,2],[72,1],[70,1.5],[72,1.5],[74,3],
-           [77,2],[81,1],[79,3],[77,2],[74,1],[72,3],[70,2],[69,1],[67,2],[65,1],[65,3],[0,3]];
+// Pieza original "Tul y pan": La menor, 64 bpm, ostinato minimalista + órgano suave
+const BEAT=60/64;
+const CH=[ // bajo, arpegio (5 notas), pad
+  {b:33,a:[45,52,57,60,64],p:[57,60,64]},   // Am
+  {b:29,a:[41,48,53,57,60],p:[57,60,65]},   // F
+  {b:36,a:[48,55,60,64,67],p:[55,60,64]},   // C
+  {b:28,a:[40,47,52,55,59],p:[55,59,64]},   // Em
+];
+const PAT=[0,1,2,3,4,3,2,1];
+const MEL=[ // [chord, beat, nota, duración]
+  [[0,0,76,3],[0,3,74,1],[0,4,72,4],[1,0,69,3],[1,3,72,1],[1,4,77,4],[2,0,76,2],[2,2,79,2],[2,4,76,4],[3,0,74,3],[3,3,71,1],[3,4,76,4]],
+  [[0,0,81,4],[0,4,79,2],[0,6,76,2],[1,0,77,4],[1,4,76,2],[1,6,72,2],[2,0,79,3],[2,3,76,1],[2,4,72,4],[3,0,71,6],[3,6,74,2]]
+];
+// forma: 0 solo piano, 1 +melodía, 2 +órgano y melodía alta, 3 se apaga
+const FORM=[{m:-1,pad:0,v:.7},{m:0,pad:.5,v:.85},{m:1,pad:1,v:1},{m:0,pad:.6,v:.75},{m:-1,pad:.3,v:.6}];
 
-function note(f,t,d,v){
-  const o=ctx.createOscillator(),o2=ctx.createOscillator(),g=ctx.createGain();
-  o.type='triangle';o2.type='sine';o.frequency.value=f;o2.frequency.value=f*2;
-  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v,t+.01);
-  g.gain.exponentialRampToValueAtTime(v*.3,t+.4);g.gain.exponentialRampToValueAtTime(.0001,t+d+1.4);
-  const g2=ctx.createGain();g2.gain.value=.15;o2.connect(g2);g2.connect(g);
-  o.connect(g);g.connect(master);o.start(t);o2.start(t);o.stop(t+d+1.5);o2.stop(t+d+1.5);
+function piano(f,t,d,v){
+  const g=ctx.createGain(),lp=ctx.createBiquadFilter();
+  lp.type='lowpass';lp.frequency.setValueAtTime(Math.min(9000,f*7),t);lp.frequency.exponentialRampToValueAtTime(Math.max(400,f*1.5),t+d+1);
+  [[1,1],[2,.35],[3,.12],[4,.05]].forEach(([h,a],i)=>{const o=ctx.createOscillator();o.type='sine';
+    o.frequency.value=f*h*(1+(i?0.0008*i:0));o.detune.value=(Math.random()-.5)*4;const og=ctx.createGain();og.gain.value=a;
+    o.connect(og);og.connect(lp);o.start(t);o.stop(t+d+3)});
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v,t+.006);
+  g.gain.exponentialRampToValueAtTime(v*.35,t+.5);g.gain.exponentialRampToValueAtTime(.0001,t+d+2.6);
+  lp.connect(g);g.connect(dry);g.connect(wet);
 }
-function loop(){
-  const beat=.62,t0=ctx.currentTime+.1;let t=t0;
-  mel.forEach(([n,b])=>{if(n)note(N(n),t,b*beat,.12);t+=b*beat});
-  const total=t-t0;
-  for(let bar=0;bar*3*beat<total;bar++){
-    const c=prog[Math.floor(bar/2)%4],bt=t0+bar*3*beat;
-    note(N(c[0]-12),bt,2.5*beat,.09);
-    note(N(c[1]),bt+beat,beat,.04);note(N(c[2]),bt+beat,beat,.04);
-    note(N(c[3]),bt+2*beat,beat,.04);note(N(c[2]),bt+2*beat,beat,.04);
-  }
-  timer=setTimeout(loop,total*1000);
+function pad(notes,t,d,v){
+  if(v<=0)return;const g=ctx.createGain(),lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=900;lp.Q.value=.3;
+  notes.forEach(n=>[-5,5].forEach(dt=>{const o=ctx.createOscillator();o.type='sawtooth';o.frequency.value=N(n);o.detune.value=dt;
+    o.connect(lp);o.start(t);o.stop(t+d+3)}));
+  const o=ctx.createOscillator();o.type='sine';o.frequency.value=N(notes[0]-24);o.connect(lp);o.start(t);o.stop(t+d+3);
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.012*v,t+2.2);g.gain.setValueAtTime(.012*v,t+d);g.gain.linearRampToValueAtTime(0,t+d+2.8);
+  lp.connect(g);g.connect(wet);g.connect(dry);
 }
+function impulse(sec){const r=ctx.sampleRate,b=ctx.createBuffer(2,r*sec,r);
+  for(let c=0;c<2;c++){const d=b.getChannelData(c);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,3.2)}return b}
+// un "paso" = un acorde (8 corcheas = 2 compases de 4/4 a corcheas: 8 beats)
+function playChord(t,s){
+  const sec=FORM[Math.floor(s/4)%FORM.length],ci=s%4,c=CH[ci],hum=()=>(Math.random()-.5)*.012;
+  piano(N(c.b+12),t,BEAT*7,.10*sec.v); if(sec.pad>.8)piano(N(c.b),t,BEAT*7,.07);
+  for(let i=0;i<16;i++){const n=c.a[PAT[i%8]];piano(N(n),t+i*BEAT/2+hum(),BEAT*.9,(.045+(i%4==0?.015:0))*sec.v)}
+  pad(c.p,t,BEAT*8,sec.pad);
+  if(sec.m>=0)MEL[sec.m].filter(x=>x[0]===ci).forEach(([,b,n,d])=>piano(N(n),t+b*BEAT+hum(),d*BEAT,.085*sec.v));
+}
+function tick(){while(nextT<ctx.currentTime+1.5){playChord(nextT,step++);nextT+=BEAT*8}}
 function startMusic(){
   ctx=new (window.AudioContext||window.webkitAudioContext)();
-  master=ctx.createGain();master.gain.value=.9;
-  const dl=ctx.createDelay();dl.delayTime.value=.33;const fb=ctx.createGain();fb.gain.value=.28;
-  master.connect(ctx.destination);master.connect(dl);dl.connect(fb);fb.connect(dl);dl.connect(ctx.destination);
-  playing=true;loop();$('mute').style.display='block';
+  master=ctx.createGain();master.gain.value=0;master.gain.linearRampToValueAtTime(1,ctx.currentTime+3);
+  const comp=ctx.createDynamicsCompressor();comp.threshold.value=-18;comp.ratio.value=3;
+  dry=ctx.createGain();dry.gain.value=.55;wet=ctx.createConvolver();wet.buffer=impulse(4.5);
+  const wg=ctx.createGain();wg.gain.value=.9;
+  dry.connect(master);wet.connect(wg);wg.connect(master);master.connect(comp);comp.connect(ctx.destination);
+  nextT=ctx.currentTime+.3;tick();sched=setInterval(tick,300);playing=true;$('mute').style.display='block';
 }
 $('mute').onclick=()=>{if(!ctx)return;playing=!playing;
   master.gain.setTargetAtTime(playing?.9:0,ctx.currentTime,.2);$('mute').textContent=playing?'♪':'✕';};
