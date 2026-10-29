@@ -60,12 +60,12 @@ const $=id=>document.getElementById(id);
 let ctx,master,dry,wet,playing=false,sched,nextT,step=0;
 const N=n=>440*Math.pow(2,(n-69)/12);
 // Línea base: La Mi La Mi Si Mi Si Mi Do Mi Do Mi Re Mi... (corcheas, nota pedal arriba)
-const E8=0.36; // duración de cada corchea
-const FR=[ // cada frase: nota pedal, 4 notas que se mueven (2 corcheas c/u = 4 corcheas), bajo, melodía [inicio, nota, largo] en corcheas
-  {p:64,l:[57,59,60,62],b:45,m:[[0,76,8],[8,77,4],[12,76,4]]},  // La Mi Si Mi Do Mi Re Mi  (Am)
-  {p:64,l:[60,59,57,56],b:40,m:[[0,76,8],[8,74,4],[12,71,4]]},  // Do Si La Sol#  (E)
-  {p:65,l:[57,60,62,60],b:38,m:[[0,77,8],[8,76,4],[12,74,4]]},  // sobre Fa  (Dm)
-  {p:64,l:[60,59,57,59],b:41,m:[[0,72,6],[6,71,2],[8,69,8]]},   // vuelve  (F → Am)
+const E8=0.46; // duración de cada corchea
+const FR=[ // siempre Mi arriba; abajo solo La Si Do Re
+  {p:64,l:[57,59,60,62],b:45,m:[[0,76,8],[8,74,4],[12,76,4]]},  // La Si Do Re  (Am)
+  {p:64,l:[62,60,59,57],b:41,m:[[0,76,8],[8,74,4],[12,72,4]]},  // Re Do Si La  (F)
+  {p:64,l:[60,62,59,62],b:43,m:[[0,74,8],[8,71,4],[12,74,4]]},  // Do Re Si Re  (G)
+  {p:64,l:[60,59,57,57],b:45,m:[[0,72,6],[6,71,2],[8,69,8]]},   // Do Si La La  (Am)
 ];
 // forma por vueltas: 0 solo la línea, 1 + bajo, 2 + melodía, 3 + melodía y bajo en octavas, 4 se apaga
 const FORM=[{bass:0,mel:0,v:.75},{bass:1,mel:0,v:.85},{bass:1,mel:1,v:.95},{bass:2,mel:1,v:1},{bass:1,mel:0,v:.6}];
